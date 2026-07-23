@@ -77,9 +77,16 @@ resource "google_compute_instance" "langfuse" {
     langfuse_host      = "langfuse.${replace(google_compute_address.langfuse.address, ".", "-")}.nip.io"
     langfuse_image_tag = var.langfuse_image_tag
     caddy_image_tag    = var.caddy_image_tag
+    postgres_image     = var.postgres_image
+    clickhouse_image   = var.clickhouse_image
+    redis_image        = var.redis_image
+    minio_image        = var.minio_image
     compose_b64        = base64encode(file("${path.module}/../../templates/langfuse-compose.yml"))
     caddyfile_b64      = base64encode(file("${path.module}/../../templates/langfuse.Caddyfile"))
     ops_agent_b64      = base64encode(file("${path.module}/../../templates/langfuse-ops-agent.yaml"))
+    retention_script_b64 = base64encode(
+      file("${path.module}/../../scripts/prune-langfuse-traces.sh")
+    )
   })
 
   depends_on = [

@@ -48,35 +48,37 @@ install -d -m 0700 /run/cosmos
   printf 'LANGFUSE_TRACING_ENVIRONMENT=development\n'
   printf 'LANGFUSE_TRACING_RELEASE=%s\n' "${image_reference##*@}"
   printf 'LANGFUSE_TRACING_ENABLED=true\n'
+} > /run/cosmos/api.env
+
+{
   printf 'API_HOST=%s\n' "$API_HOST"
   printf 'DOCS_BASIC_AUTH_HASH=%s\n' "$(secret cosmos-docs-basic-auth-hash)"
-} > /run/cosmos/api.env
+} > /run/cosmos/caddy.env
 
 previous_image=""
 [[ -f current-image ]] && previous_image="$(<current-image)"
-printf 'API_IMAGE=%s\nCADDY_IMAGE_TAG=%s\n' "$image_reference" "$CADDY_IMAGE_TAG" > release.env
 
-if ! docker compose --env-file release.env -f compose.yml up -d --remove-orphans; then
-  deploy_failed=true
-else
-  deploy_failed=false
+deploy_and_wait() {
+  local candidate="$1"
+  printf 'API_IMAGE=%s\nCADDY_IMAGE_TAG=%s\n' "$candidate" "$CADDY_IMAGE_TAG" > release.env
+  docker compose --env-file release.env -f compose.yml up -d --remove-orphans || return 1
+
   for _ in $(seq 1 30); do
     if docker compose --env-file release.env -f compose.yml exec -T api \
       python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"; then
-      deploy_failed=false
-      break
+      return 0
     fi
-    deploy_failed=true
     sleep 2
   done
-fi
+  return 1
+}
 
-if [[ "$deploy_failed" == true ]]; then
-  if [[ -n "$previous_image" ]]; then
-    printf 'API_IMAGE=%s\nCADDY_IMAGE_TAG=%s\n' "$previous_image" "$CADDY_IMAGE_TAG" > release.env
-    docker compose --env-file release.env -f compose.yml up -d --remove-orphans
+if ! deploy_and_wait "$image_reference"; then
+  if [[ -n "$previous_image" ]] && deploy_and_wait "$previous_image"; then
+    echo "deployment failed; previous image is healthy and restored" >&2
+  else
+    echo "deployment failed and no healthy rollback is available" >&2
   fi
-  echo "deployment failed; previous image restored" >&2
   exit 1
 fi
 

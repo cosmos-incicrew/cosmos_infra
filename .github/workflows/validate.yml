@@ -22,6 +22,7 @@ jobs:
       - run: terraform -chdir=bootstrap validate
       - run: terraform -chdir=environments/development init -backend=false
       - run: terraform -chdir=environments/development validate
+      - run: python -m unittest discover -s tests
 
   compose:
     runs-on: ubuntu-latest
@@ -32,9 +33,14 @@ jobs:
           API_IMAGE: example.invalid/cosmos@sha256:0000000000000000000000000000000000000000000000000000000000000000
           CADDY_IMAGE_TAG: "2.11.4"
           LANGFUSE_IMAGE_TAG: "3.224.0"
+          POSTGRES_IMAGE: "postgres:17"
+          CLICKHOUSE_IMAGE: "clickhouse/clickhouse-server:25.8.28.1"
+          REDIS_IMAGE: "redis:7"
+          MINIO_IMAGE: "minio/minio:latest"
         run: |
           sudo install -d -m 0700 /run/cosmos
           sudo touch /run/cosmos/api.env
+          sudo touch /run/cosmos/caddy.env
           touch templates/.env
           docker compose -f templates/api-compose.yml config --quiet
           docker compose -f templates/langfuse-compose.yml config --quiet

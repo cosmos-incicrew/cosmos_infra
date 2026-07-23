@@ -92,7 +92,13 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.ref"              = "assertion.ref"
   }
 
-  attribute_condition = "assertion.repository_owner == '${var.github_organization}'"
+  attribute_condition = <<-EOT
+    assertion.ref == 'refs/heads/main' &&
+    assertion.repository in [
+      '${var.github_organization}/${var.infra_repository}',
+      '${var.github_organization}/${var.api_repository}'
+    ]
+  EOT
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

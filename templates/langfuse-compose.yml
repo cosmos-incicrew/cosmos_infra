@@ -5,7 +5,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    env_file: .env
+    environment:
+      LANGFUSE_HOST: ${LANGFUSE_HOST}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -17,7 +18,32 @@ services:
   langfuse-worker:
     image: langfuse/langfuse-worker:${LANGFUSE_IMAGE_TAG}
     restart: unless-stopped
-    env_file: .env
+    environment: &langfuse-worker-environment
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      DATABASE_URL: ${DATABASE_URL}
+      SALT: ${SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED}
+      CLICKHOUSE_MIGRATION_URL: ${CLICKHOUSE_MIGRATION_URL}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_AUTH: ${REDIS_AUTH}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET}
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: ${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT}
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE}
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: ${LANGFUSE_S3_MEDIA_UPLOAD_BUCKET}
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${LANGFUSE_S3_MEDIA_UPLOAD_REGION}
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT}
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE}
     depends_on: &langfuse-dependencies
       postgres:
         condition: service_healthy
@@ -31,7 +57,20 @@ services:
   langfuse-web:
     image: langfuse/langfuse:${LANGFUSE_IMAGE_TAG}
     restart: unless-stopped
-    env_file: .env
+    environment:
+      <<: *langfuse-worker-environment
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD}
+      AUTH_DISABLE_SIGNUP: ${AUTH_DISABLE_SIGNUP}
+      LANGFUSE_CSP_ENFORCE_HTTPS: ${LANGFUSE_CSP_ENFORCE_HTTPS}
     ports:
       - "3000:3000"
     depends_on: *langfuse-dependencies
@@ -43,9 +82,14 @@ services:
       start_period: 30s
 
   postgres:
-    image: postgres:17
+    image: ${POSTGRES_IMAGE}
     restart: unless-stopped
-    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: UTC
+      PGTZ: UTC
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -55,10 +99,13 @@ services:
       retries: 10
 
   clickhouse:
-    image: clickhouse/clickhouse-server:25
+    image: ${CLICKHOUSE_IMAGE}
     restart: unless-stopped
     user: "101:101"
-    env_file: .env
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - clickhouse_logs:/var/log/clickhouse-server
@@ -69,9 +116,10 @@ services:
       retries: 10
 
   redis:
-    image: redis:7
+    image: ${REDIS_IMAGE}
     restart: unless-stopped
-    env_file: .env
+    environment:
+      REDIS_AUTH: ${REDIS_AUTH}
     command: ["sh", "-c", "exec redis-server --requirepass \"$${REDIS_AUTH}\" --maxmemory-policy noeviction"]
     volumes:
       - redis_data:/data
@@ -82,11 +130,13 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: ${MINIO_IMAGE}
     restart: unless-stopped
     entrypoint: sh
     command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
-    env_file: .env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
     healthcheck:

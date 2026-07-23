@@ -5,6 +5,10 @@ readonly project_id="${1:-kt-tech-up-01}"
 readonly zone="${2:-us-central1-a}"
 readonly instance="cosmos-langfuse-dev"
 
+printf 'true' | gcloud secrets versions add cosmos-langfuse-disable-signup \
+  --project="$project_id" \
+  --data-file=-
+
 gcloud compute ssh "$instance" \
   --project="$project_id" \
   --zone="$zone" \

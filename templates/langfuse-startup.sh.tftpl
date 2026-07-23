@@ -31,6 +31,8 @@ systemctl start docker
 install -d -m 0700 /opt/langfuse
 echo '${compose_b64}' | base64 -d > /opt/langfuse/compose.yml
 echo '${caddyfile_b64}' | base64 -d > /opt/langfuse/Caddyfile
+echo '${retention_script_b64}' | base64 -d > /opt/langfuse/prune-traces
+chmod 0755 /opt/langfuse/prune-traces
 
 curl -fsSLO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
 bash add-google-cloud-ops-agent-repo.sh --also-install
@@ -61,6 +63,10 @@ write_env LANGFUSE_HOST '${langfuse_host}'
 write_env NEXTAUTH_URL 'https://${langfuse_host}'
 write_env LANGFUSE_IMAGE_TAG '${langfuse_image_tag}'
 write_env CADDY_IMAGE_TAG '${caddy_image_tag}'
+write_env POSTGRES_IMAGE '${postgres_image}'
+write_env CLICKHOUSE_IMAGE '${clickhouse_image}'
+write_env REDIS_IMAGE '${redis_image}'
+write_env MINIO_IMAGE '${minio_image}'
 write_env NEXTAUTH_SECRET "$(secret cosmos-langfuse-nextauth-secret)"
 write_env SALT "$(secret cosmos-langfuse-salt)"
 write_env ENCRYPTION_KEY "$(secret cosmos-langfuse-encryption-key)"
@@ -94,16 +100,42 @@ write_env LANGFUSE_INIT_ORG_ID cosmos
 write_env LANGFUSE_INIT_ORG_NAME Cosmos
 write_env LANGFUSE_INIT_PROJECT_ID cosmos-development
 write_env LANGFUSE_INIT_PROJECT_NAME 'Cosmos Development'
-write_env LANGFUSE_INIT_PROJECT_RETENTION 30
 write_env LANGFUSE_INIT_PROJECT_PUBLIC_KEY "$(secret cosmos-langfuse-public-key)"
 write_env LANGFUSE_INIT_PROJECT_SECRET_KEY "$(secret cosmos-langfuse-secret-key)"
 write_env LANGFUSE_INIT_USER_EMAIL "$(secret cosmos-langfuse-init-user-email)"
 write_env LANGFUSE_INIT_USER_NAME 'Cosmos Admin'
 write_env LANGFUSE_INIT_USER_PASSWORD "$(secret cosmos-langfuse-init-user-password)"
-write_env AUTH_DISABLE_SIGNUP false
+write_env AUTH_DISABLE_SIGNUP "$(secret cosmos-langfuse-disable-signup)"
 write_env LANGFUSE_CSP_ENFORCE_HTTPS true
 write_env TELEMETRY_ENABLED false
 
 cd /opt/langfuse
 docker compose --env-file .env -f compose.yml pull
 docker compose --env-file .env -f compose.yml up -d
+
+cat > /etc/systemd/system/cosmos-langfuse-retention.service <<'EOF'
+[Unit]
+Description=Delete Cosmos Langfuse traces beyond the retention window
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment=LANGFUSE_RETENTION_DAYS=30
+ExecStart=/opt/langfuse/prune-traces
+EOF
+
+cat > /etc/systemd/system/cosmos-langfuse-retention.timer <<'EOF'
+[Unit]
+Description=Run Cosmos Langfuse trace retention daily
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now cosmos-langfuse-retention.timer

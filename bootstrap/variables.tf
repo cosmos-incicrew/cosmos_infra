@@ -17,3 +17,8 @@ variable "infra_repository" {
   type    = string
   default = "cosmos_infra"
 }
+
+variable "api_repository" {
+  type    = string
+  default = "cosmos_server"
+}

@@ -18,6 +18,7 @@ locals {
     "cosmos-docs-basic-auth-hash",
     "cosmos-langfuse-public-key",
     "cosmos-langfuse-secret-key",
+    "cosmos-langfuse-disable-signup",
     "cosmos-langfuse-nextauth-secret",
     "cosmos-langfuse-salt",
     "cosmos-langfuse-encryption-key",

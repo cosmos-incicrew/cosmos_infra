@@ -6,7 +6,7 @@ services:
       - "80:80"
       - "443:443"
     env_file:
-      - /run/cosmos/api.env
+      - /run/cosmos/caddy.env
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

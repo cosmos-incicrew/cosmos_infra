@@ -26,6 +26,7 @@ put cosmos-kakao-admin-key "$(prompt KAKAO_ADMIN_KEY)"
 put cosmos-docs-basic-auth-hash "$(prompt 'Caddy bcrypt hash')"
 put cosmos-langfuse-public-key "lf_pk_$(random_hex)"
 put cosmos-langfuse-secret-key "lf_sk_$(random_hex)"
+put cosmos-langfuse-disable-signup false
 put cosmos-langfuse-nextauth-secret "$(random_b64)"
 put cosmos-langfuse-salt "$(random_b64)"
 put cosmos-langfuse-encryption-key "$(random_hex)"
