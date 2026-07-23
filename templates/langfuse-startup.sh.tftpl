@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec > >(tee -a /var/log/cosmos-langfuse-startup.log) 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y ca-certificates curl jq
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+. /etc/os-release
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" > /etc/apt/sources.list.d/docker.list
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+DATA_DEVICE="/dev/disk/by-id/google-langfuse-data"
+if ! blkid "$DATA_DEVICE" >/dev/null 2>&1; then
+  mkfs.ext4 -F "$DATA_DEVICE"
+fi
+install -d -m 0755 /var/lib/cosmos-langfuse
+grep -q "$DATA_DEVICE" /etc/fstab || echo "$DATA_DEVICE /var/lib/cosmos-langfuse ext4 defaults,nofail 0 2" >> /etc/fstab
+mountpoint -q /var/lib/cosmos-langfuse || mount /var/lib/cosmos-langfuse
+
+systemctl stop docker || true
+install -d -m 0711 /var/lib/cosmos-langfuse/docker
+cat > /etc/docker/daemon.json <<'EOF'
+{"data-root":"/var/lib/cosmos-langfuse/docker","log-opts":{"max-size":"20m","max-file":"5"}}
+EOF
+systemctl start docker
+
+install -d -m 0700 /opt/langfuse
+echo '${compose_b64}' | base64 -d > /opt/langfuse/compose.yml
+echo '${caddyfile_b64}' | base64 -d > /opt/langfuse/Caddyfile
+
+curl -fsSLO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+bash add-google-cloud-ops-agent-repo.sh --also-install
+echo '${ops_agent_b64}' | base64 -d > /etc/google-cloud-ops-agent/config.yaml
+systemctl restart google-cloud-ops-agent
+
+metadata_token() {
+  curl -fsS -H 'Metadata-Flavor: Google' \
+    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' |
+    jq -r .access_token
+}
+
+secret() {
+  local id="$1"
+  curl -fsS -H "Authorization: Bearer $(metadata_token)" \
+    "https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/$id/versions/latest:access" |
+    jq -r .payload.data | tr '_-' '/+' | base64 -d
+}
+
+write_env() {
+  local key="$1" value="$2"
+  printf '%s=%s\n' "$key" "$value" >> /opt/langfuse/.env
+}
+
+umask 077
+: > /opt/langfuse/.env
+write_env LANGFUSE_HOST '${langfuse_host}'
+write_env NEXTAUTH_URL 'https://${langfuse_host}'
+write_env LANGFUSE_IMAGE_TAG '${langfuse_image_tag}'
+write_env CADDY_IMAGE_TAG '${caddy_image_tag}'
+write_env NEXTAUTH_SECRET "$(secret cosmos-langfuse-nextauth-secret)"
+write_env SALT "$(secret cosmos-langfuse-salt)"
+write_env ENCRYPTION_KEY "$(secret cosmos-langfuse-encryption-key)"
+write_env POSTGRES_PASSWORD "$(secret cosmos-langfuse-postgres-password)"
+write_env POSTGRES_USER postgres
+write_env POSTGRES_DB postgres
+write_env DATABASE_URL "postgresql://postgres:$(secret cosmos-langfuse-postgres-password)@postgres:5432/postgres"
+write_env CLICKHOUSE_USER clickhouse
+write_env CLICKHOUSE_PASSWORD "$(secret cosmos-langfuse-clickhouse-password)"
+write_env CLICKHOUSE_URL http://clickhouse:8123
+write_env CLICKHOUSE_MIGRATION_URL clickhouse://clickhouse:9000
+write_env CLICKHOUSE_CLUSTER_ENABLED false
+write_env REDIS_AUTH "$(secret cosmos-langfuse-redis-password)"
+write_env REDIS_HOST redis
+write_env REDIS_PORT 6379
+write_env MINIO_ROOT_USER minio
+write_env MINIO_ROOT_PASSWORD "$(secret cosmos-langfuse-minio-password)"
+write_env LANGFUSE_S3_EVENT_UPLOAD_BUCKET langfuse
+write_env LANGFUSE_S3_EVENT_UPLOAD_REGION auto
+write_env LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID minio
+write_env LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY "$(secret cosmos-langfuse-minio-password)"
+write_env LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT http://minio:9000
+write_env LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE true
+write_env LANGFUSE_S3_MEDIA_UPLOAD_BUCKET langfuse
+write_env LANGFUSE_S3_MEDIA_UPLOAD_REGION auto
+write_env LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID minio
+write_env LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY "$(secret cosmos-langfuse-minio-password)"
+write_env LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT http://minio:9000
+write_env LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE true
+write_env LANGFUSE_INIT_ORG_ID cosmos
+write_env LANGFUSE_INIT_ORG_NAME Cosmos
+write_env LANGFUSE_INIT_PROJECT_ID cosmos-development
+write_env LANGFUSE_INIT_PROJECT_NAME 'Cosmos Development'
+write_env LANGFUSE_INIT_PROJECT_RETENTION 30
+write_env LANGFUSE_INIT_PROJECT_PUBLIC_KEY "$(secret cosmos-langfuse-public-key)"
+write_env LANGFUSE_INIT_PROJECT_SECRET_KEY "$(secret cosmos-langfuse-secret-key)"
+write_env LANGFUSE_INIT_USER_EMAIL "$(secret cosmos-langfuse-init-user-email)"
+write_env LANGFUSE_INIT_USER_NAME 'Cosmos Admin'
+write_env LANGFUSE_INIT_USER_PASSWORD "$(secret cosmos-langfuse-init-user-password)"
+write_env AUTH_DISABLE_SIGNUP false
+write_env LANGFUSE_CSP_ENFORCE_HTTPS true
+write_env TELEMETRY_ENABLED false
+
+cd /opt/langfuse
+docker compose --env-file .env -f compose.yml pull
+docker compose --env-file .env -f compose.yml up -d

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec > >(tee -a /var/log/cosmos-api-startup.log) 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y ca-certificates curl jq
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+. /etc/os-release
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" > /etc/apt/sources.list.d/docker.list
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+install -d -m 0755 /opt/cosmos/bin
+echo '${compose_b64}' | base64 -d > /opt/cosmos/compose.yml
+echo '${caddyfile_b64}' | base64 -d > /opt/cosmos/Caddyfile
+echo '${deploy_script_b64}' | base64 -d > /opt/cosmos/bin/deploy-api
+chmod 0755 /opt/cosmos/bin/deploy-api
+
+curl -fsSLO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+bash add-google-cloud-ops-agent-repo.sh --also-install
+echo '${ops_agent_b64}' | base64 -d > /etc/google-cloud-ops-agent/config.yaml
+systemctl restart google-cloud-ops-agent
+
+cat > /opt/cosmos/platform.env <<'EOF'
+GCP_PROJECT_ID=${project_id}
+GCP_REGION=${region}
+API_HOST=${api_host}
+LANGFUSE_BASE_URL=${langfuse_url}
+CADDY_IMAGE_TAG=${caddy_image_tag}
+EOF

@@ -1,0 +1,40 @@
+name: Validate infrastructure
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+      - run: terraform fmt -check -recursive
+      - run: terraform -chdir=bootstrap init -backend=false
+      - run: terraform -chdir=bootstrap validate
+      - run: terraform -chdir=environments/development init -backend=false
+      - run: terraform -chdir=environments/development validate
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate Docker Compose
+        env:
+          API_IMAGE: example.invalid/cosmos@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          CADDY_IMAGE_TAG: "2.11.4"
+          LANGFUSE_IMAGE_TAG: "3.224.0"
+        run: |
+          sudo install -d -m 0700 /run/cosmos
+          sudo touch /run/cosmos/api.env
+          touch templates/.env
+          docker compose -f templates/api-compose.yml config --quiet
+          docker compose -f templates/langfuse-compose.yml config --quiet

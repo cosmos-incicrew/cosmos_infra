@@ -1,0 +1,22 @@
+logging:
+  receivers:
+    docker_json:
+      type: files
+      include_paths:
+        - /var/lib/docker/containers/*/*.log
+  service:
+    pipelines:
+      docker:
+        receivers:
+          - docker_json
+
+metrics:
+  receivers:
+    hostmetrics:
+      type: hostmetrics
+      collection_interval: 60s
+  service:
+    pipelines:
+      host:
+        receivers:
+          - hostmetrics

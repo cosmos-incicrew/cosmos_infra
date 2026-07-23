@@ -1,0 +1,61 @@
+name: Development environment control
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Environment action
+        required: true
+        type: choice
+        options: [status, start, stop]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v7
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - if: inputs.action == 'status'
+        run: gcloud compute instances list --project="${{ vars.GCP_PROJECT_ID }}" --filter='name~cosmos-(api|langfuse)-dev'
+      - if: inputs.action == 'start'
+        env:
+          API_URL: ${{ vars.API_URL }}
+          LANGFUSE_URL: ${{ vars.LANGFUSE_URL }}
+        run: |
+          wait_until_ready() {
+            local url="$1"
+            for _ in $(seq 1 60); do
+              if curl --fail --silent --show-error --max-time 5 "$url" >/dev/null; then
+                return 0
+              fi
+              sleep 10
+            done
+            echo "Timed out waiting for $url" >&2
+            return 1
+          }
+          gcloud compute instances start cosmos-langfuse-dev \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --zone=us-central1-a
+          wait_until_ready "${LANGFUSE_URL}/api/public/health"
+          gcloud compute instances start cosmos-api-dev \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --zone=us-central1-a
+          wait_until_ready "${API_URL}/health/ready"
+      - if: inputs.action == 'stop'
+        run: |
+          gcloud compute instances stop cosmos-api-dev \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --zone=us-central1-a
+          gcloud compute instances stop cosmos-langfuse-dev \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --zone=us-central1-a
