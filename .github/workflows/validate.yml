@@ -38,9 +38,9 @@ jobs:
           REDIS_IMAGE: "redis:7"
           MINIO_IMAGE: "minio/minio:latest"
         run: |
-          sudo install -d -m 0700 /run/cosmos
-          sudo touch /run/cosmos/api.env
-          sudo touch /run/cosmos/caddy.env
+          sudo install -d -m 0755 /run/cosmos
+          sudo install -m 0644 /dev/null /run/cosmos/api.env
+          sudo install -m 0644 /dev/null /run/cosmos/caddy.env
           touch templates/.env
           docker compose -f templates/api-compose.yml config --quiet
           docker compose -f templates/langfuse-compose.yml config --quiet
