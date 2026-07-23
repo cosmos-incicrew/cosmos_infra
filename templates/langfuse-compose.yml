@@ -75,7 +75,7 @@ services:
       - "3000:3000"
     depends_on: *langfuse-dependencies
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/public/health >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://$$(hostname):3000/api/public/health >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 12

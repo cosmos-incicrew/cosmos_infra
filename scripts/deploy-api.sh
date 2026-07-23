@@ -52,7 +52,7 @@ install -d -m 0700 /run/cosmos
 
 {
   printf 'API_HOST=%s\n' "$API_HOST"
-  printf 'DOCS_BASIC_AUTH_HASH=%s\n' "$(secret cosmos-docs-basic-auth-hash)"
+  printf "DOCS_BASIC_AUTH_HASH='%s'\n" "$(secret cosmos-docs-basic-auth-hash)"
 } > /run/cosmos/caddy.env
 
 previous_image=""

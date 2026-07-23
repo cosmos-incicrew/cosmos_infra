@@ -111,6 +111,7 @@ write_env TELEMETRY_ENABLED false
 
 cd /opt/langfuse
 docker compose --env-file .env -f compose.yml pull
+docker compose --env-file .env -f compose.yml rm --stop --force || true
 docker compose --env-file .env -f compose.yml up -d
 
 cat > /etc/systemd/system/cosmos-langfuse-retention.service <<'EOF'
